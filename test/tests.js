@@ -101,9 +101,7 @@ describe('ETHPool', function () {
 			it('Should add rewards to token #1', async function () {
 				expect(await pool.deposits(1)).to.equal(deposit)
 				expect(await pool.rewards(1)).to.equal(rewards)
-				expect(await pool.balanceOfToken(1)).to.equal(
-					ethers.utils.parseEther('1.5')
-				)
+				expect(await pool.balanceOfToken(1)).to.equal(deposit.add(rewards))
 			})
 		})
 
@@ -111,24 +109,40 @@ describe('ETHPool', function () {
 			let addLiquidity1
 			let addLiquidity2
 			let depositRewards1
-			let addLiquidity1Timestamp
-			let addLiquidity2Timestamp
-			let depositRewardsTimestamp
 
 			beforeEach(async function () {
 				addLiquidity1 = await addLiquidity(addr1, deposit)
 				addLiquidity2 = await addLiquidity(addr1, deposit)
 				depositRewards1 = await depositRewards(rewards)
+			})
 
-				addLiquidity1Timestamp = addLiquidity1.blockNumber
-				addLiquidity2Timestamp = addLiquidity2.blockNumber
-				depositRewardsTimestamp = depositRewards1.blockNumber
-
-				console.log(
-					addLiquidity1Timestamp,
-					addLiquidity2Timestamp,
-					depositRewardsTimestamp
+			function points(liquidityDeposit, rewardsDeposit) {
+				const delta = BigInt(
+					rewardsDeposit.blockNumber - liquidityDeposit.blockNumber
 				)
+				const value = liquidityDeposit.value.toBigInt()
+				return delta * value
+			}
+
+			function expectedRewards(liquidityDeposits, rewardsDeposit) {
+				const _points = liquidityDeposits.map((d) => points(d, rewardsDeposit))
+				const totalPoints = _points.reduce(function (a, b) {
+					return a + b
+				}, BigInt(0))
+				return _points.map(
+					(p) => (p * rewardsDeposit.value.toBigInt()) / totalPoints
+				)
+			}
+
+			it("Should assign proportional rewards according to deposit's timestamp", async function () {
+				const _expectedRewards = expectedRewards(
+					[addLiquidity1, addLiquidity2],
+					depositRewards1
+				)
+				const r1 = await pool.rewards(1)
+				const r2 = await pool.rewards(2)
+				expect(r1.toBigInt()).to.equal(_expectedRewards[0])
+				expect(r2.toBigInt()).to.equal(_expectedRewards[1])
 			})
 		})
 	})
